@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import wavelink
 from typing import cast
 import asyncio
@@ -12,7 +13,7 @@ class CustomPlayer(wavelink.Player):
         self.queue = wavelink.Queue()
 
 class Music(commands.Cog):
-    """Music cog with Lavalink and Spotify support"""
+    """Music cog with Lavalink and Spotify support - Slash Commands"""
     
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -57,27 +58,28 @@ class Music(commands.Cog):
             next_track = player.queue.get()
             await player.play(next_track)
     
-    @commands.hybrid_command(name="play", description="Play a song from YouTube or Spotify")
-    async def play(self, ctx: commands.Context, *, query: str):
+    @app_commands.command(name="play", description="Play a song from YouTube or Spotify")
+    @app_commands.describe(query="Song name or URL (YouTube/Spotify)")
+    async def play(self, interaction: discord.Interaction, query: str):
         """Play a song from YouTube or Spotify URL/search"""
-        if not ctx.author.voice:
-            await ctx.send("❌ You need to be in a voice channel!")
+        if not interaction.user.voice:
+            await interaction.response.send_message("❌ You need to be in a voice channel!", ephemeral=True)
             return
         
         # Defer response as search may take time
-        await ctx.defer()
+        await interaction.response.defer()
         
         # Get or create player
-        if not ctx.guild.voice_client:
-            player: CustomPlayer = await ctx.author.voice.channel.connect(cls=CustomPlayer)
+        if not interaction.guild.voice_client:
+            player: CustomPlayer = await interaction.user.voice.channel.connect(cls=CustomPlayer)
         else:
-            player = cast(CustomPlayer, ctx.guild.voice_client)
+            player = cast(CustomPlayer, interaction.guild.voice_client)
         
         # Search for tracks
         try:
             tracks = await wavelink.Playable.search(query)
             if not tracks:
-                await ctx.send("❌ No tracks found!")
+                await interaction.followup.send("❌ No tracks found!")
                 return
             
             track = tracks[0]
@@ -91,7 +93,7 @@ class Music(commands.Cog):
                     color=discord.Color.blue()
                 )
                 embed.set_thumbnail(url=track.artwork)
-                await ctx.send(embed=embed)
+                await interaction.followup.send(embed=embed)
             else:
                 # Play immediately
                 await player.play(track)
@@ -102,83 +104,83 @@ class Music(commands.Cog):
                 )
                 embed.set_thumbnail(url=track.artwork)
                 embed.add_field(name="Duration", value=f"{track.length // 60000}:{(track.length // 1000) % 60:02d}")
-                await ctx.send(embed=embed)
+                await interaction.followup.send(embed=embed)
         
         except Exception as e:
-            await ctx.send(f"❌ Error playing track: {str(e)}")
+            await interaction.followup.send(f"❌ Error playing track: {str(e)}")
     
-    @commands.hybrid_command(name="pause", description="Pause the current track")
-    async def pause(self, ctx: commands.Context):
+    @app_commands.command(name="pause", description="Pause the current track")
+    async def pause(self, interaction: discord.Interaction):
         """Pause the current track"""
-        player: CustomPlayer = cast(CustomPlayer, ctx.guild.voice_client)
+        player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await ctx.send("❌ Not connected to a voice channel!")
+            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
             return
         
         if player.paused:
-            await ctx.send("⏸️ Already paused!")
+            await interaction.response.send_message("⏸️ Already paused!", ephemeral=True)
             return
         
         await player.pause(True)
-        await ctx.send("⏸️ Paused!")
+        await interaction.response.send_message("⏸️ Paused!")
     
-    @commands.hybrid_command(name="resume", description="Resume the current track")
-    async def resume(self, ctx: commands.Context):
+    @app_commands.command(name="resume", description="Resume the current track")
+    async def resume(self, interaction: discord.Interaction):
         """Resume the current track"""
-        player: CustomPlayer = cast(CustomPlayer, ctx.guild.voice_client)
+        player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await ctx.send("❌ Not connected to a voice channel!")
+            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
             return
         
         if not player.paused:
-            await ctx.send("▶️ Already playing!")
+            await interaction.response.send_message("▶️ Already playing!", ephemeral=True)
             return
         
         await player.pause(False)
-        await ctx.send("▶️ Resumed!")
+        await interaction.response.send_message("▶️ Resumed!")
     
-    @commands.hybrid_command(name="skip", description="Skip the current track")
-    async def skip(self, ctx: commands.Context):
+    @app_commands.command(name="skip", description="Skip the current track")
+    async def skip(self, interaction: discord.Interaction):
         """Skip the current track"""
-        player: CustomPlayer = cast(CustomPlayer, ctx.guild.voice_client)
+        player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await ctx.send("❌ Not connected to a voice channel!")
+            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
             return
         
         if not player.playing:
-            await ctx.send("❌ Nothing is playing!")
+            await interaction.response.send_message("❌ Nothing is playing!", ephemeral=True)
             return
         
         await player.skip()
-        await ctx.send("⏭️ Skipped!")
+        await interaction.response.send_message("⏭️ Skipped!")
     
-    @commands.hybrid_command(name="stop", description="Stop playback and clear the queue")
-    async def stop(self, ctx: commands.Context):
+    @app_commands.command(name="stop", description="Stop playback and clear the queue")
+    async def stop(self, interaction: discord.Interaction):
         """Stop playback and clear the queue"""
-        player: CustomPlayer = cast(CustomPlayer, ctx.guild.voice_client)
+        player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await ctx.send("❌ Not connected to a voice channel!")
+            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
             return
         
         player.queue.clear()
         await player.stop()
-        await ctx.send("⏹️ Stopped and cleared queue!")
+        await interaction.response.send_message("⏹️ Stopped and cleared queue!")
     
-    @commands.hybrid_command(name="queue", description="Show the current queue")
-    async def queue(self, ctx: commands.Context):
+    @app_commands.command(name="queue", description="Show the current queue")
+    async def queue(self, interaction: discord.Interaction):
         """Show the current queue"""
-        player: CustomPlayer = cast(CustomPlayer, ctx.guild.voice_client)
+        player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await ctx.send("❌ Not connected to a voice channel!")
+            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
             return
         
         if not player.playing and not player.queue:
-            await ctx.send("📋 Queue is empty!")
+            await interaction.response.send_message("📋 Queue is empty!")
             return
         
         embed = discord.Embed(
@@ -204,15 +206,15 @@ class Music(commands.Cog):
                 inline=False
             )
         
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
-    @commands.hybrid_command(name="nowplaying", aliases=["np"], description="Show the currently playing track")
-    async def nowplaying(self, ctx: commands.Context):
+    @app_commands.command(name="nowplaying", description="Show the currently playing track")
+    async def nowplaying(self, interaction: discord.Interaction):
         """Show the currently playing track"""
-        player: CustomPlayer = cast(CustomPlayer, ctx.guild.voice_client)
+        player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player or not player.current:
-            await ctx.send("❌ Nothing is playing!")
+            await interaction.response.send_message("❌ Nothing is playing!", ephemeral=True)
             return
         
         track = player.current
@@ -237,37 +239,37 @@ class Music(commands.Cog):
         )
         embed.add_field(name="Progress", value=progress_bar, inline=False)
         
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
-    @commands.hybrid_command(name="autoplay", description="Toggle autoplay on/off")
-    async def autoplay(self, ctx: commands.Context):
+    @app_commands.command(name="autoplay", description="Toggle autoplay on/off")
+    async def autoplay(self, interaction: discord.Interaction):
         """Toggle autoplay on/off"""
-        player: CustomPlayer = cast(CustomPlayer, ctx.guild.voice_client)
+        player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await ctx.send("❌ Not connected to a voice channel!")
+            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
             return
         
         player.autoplay_enabled = not player.autoplay_enabled
         status = "enabled" if player.autoplay_enabled else "disabled"
         emoji = "✅" if player.autoplay_enabled else "❌"
         
-        await ctx.send(f"{emoji} Autoplay {status}!")
+        await interaction.response.send_message(f"{emoji} Autoplay {status}!")
     
-    @commands.hybrid_command(name="disconnect", aliases=["dc", "leave"], description="Disconnect from voice channel")
-    async def disconnect(self, ctx: commands.Context):
+    @app_commands.command(name="disconnect", description="Disconnect from voice channel")
+    async def disconnect(self, interaction: discord.Interaction):
         """Disconnect from voice channel"""
-        player: CustomPlayer = cast(CustomPlayer, ctx.guild.voice_client)
+        player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await ctx.send("❌ Not connected to a voice channel!")
+            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
             return
         
         await player.disconnect()
-        await ctx.send("👋 Disconnected!")
+        await interaction.response.send_message("👋 Disconnected!")
     
-    @commands.hybrid_command(name="help", description="Show bot commands")
-    async def help_command(self, ctx: commands.Context):
+    @app_commands.command(name="help", description="Show bot commands")
+    async def help_command(self, interaction: discord.Interaction):
         """Show bot commands"""
         embed = discord.Embed(
             title="🎵 Music Bot Commands",
@@ -276,21 +278,23 @@ class Music(commands.Cog):
         )
         
         commands_list = [
-            ("!play <song/url>", "Play a song from YouTube or Spotify"),
-            ("!pause", "Pause the current track"),
-            ("!resume", "Resume the current track"),
-            ("!skip", "Skip the current track"),
-            ("!stop", "Stop playback and clear queue"),
-            ("!queue", "Show the current queue"),
-            ("!nowplaying", "Show currently playing track"),
-            ("!autoplay", "Toggle autoplay on/off"),
-            ("!disconnect", "Disconnect from voice channel"),
+            ("</play:0>", "Play a song from YouTube or Spotify"),
+            ("</pause:0>", "Pause the current track"),
+            ("</resume:0>", "Resume the current track"),
+            ("</skip:0>", "Skip the current track"),
+            ("</stop:0>", "Stop playback and clear queue"),
+            ("</queue:0>", "Show the current queue"),
+            ("</nowplaying:0>", "Show currently playing track"),
+            ("</autoplay:0>", "Toggle autoplay on/off"),
+            ("</disconnect:0>", "Disconnect from voice channel"),
         ]
         
         for cmd, desc in commands_list:
             embed.add_field(name=cmd, value=desc, inline=False)
         
-        await ctx.send(embed=embed)
+        embed.set_footer(text="💡 Use Discord's slash command menu for autocomplete!")
+        
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Music(bot))

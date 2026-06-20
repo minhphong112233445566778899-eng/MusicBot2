@@ -13,18 +13,20 @@ A feature-rich Discord music bot with Spotify support powered by Lavalink and di
 
 ## Commands
 
+All commands are slash commands - just type `/` in Discord to see them!
+
 | Command | Description |
 |---------|-------------|
-| `!play <song/url>` | Play a song from YouTube or Spotify |
-| `!pause` | Pause the current track |
-| `!resume` | Resume the current track |
-| `!skip` | Skip the current track |
-| `!stop` | Stop playback and clear queue |
-| `!queue` | Show the current queue |
-| `!nowplaying` or `!np` | Show currently playing track |
-| `!autoplay` | Toggle autoplay on/off |
-| `!disconnect` or `!dc` | Disconnect from voice channel |
-| `!help` | Show all commands |
+| `/play <song/url>` | Play a song from YouTube or Spotify |
+| `/pause` | Pause the current track |
+| `/resume` | Resume the current track |
+| `/skip` | Skip the current track |
+| `/stop` | Stop playback and clear queue |
+| `/queue` | Show the current queue |
+| `/nowplaying` | Show currently playing track |
+| `/autoplay` | Toggle autoplay on/off |
+| `/disconnect` | Disconnect from voice channel |
+| `/help` | Show all commands |
 
 ## Setup
 
@@ -133,9 +135,33 @@ For the best experience, deploy Lavalink on Railway as well:
 2. Upload your `application.yml` with Spotify credentials
 3. Use the internal Railway URL for `LAVALINK_URI` in your bot
 
+## Bot Invite & Permissions
+
+When inviting the bot to your server, make sure to enable these:
+
+**OAuth2 Scopes:**
+- `bot`
+- `applications.commands` (Required for slash commands!)
+
+**Bot Permissions:**
+- Send Messages
+- Embed Links
+- Connect
+- Speak
+- Use Slash Commands
+
+**Generate Invite URL:**
+Go to Discord Developer Portal → Your Application → OAuth2 → URL Generator, select the scopes and permissions above.
+
 ## Troubleshooting
 
-### Bot not responding
+### Bot not responding to slash commands
+- Make sure "applications.commands" scope is enabled when you invited the bot
+- Wait a few minutes after bot starts for slash commands to sync
+- Try kicking and re-inviting the bot with correct permissions
+- Check that bot has "Use Application Commands" permission in server
+
+### Bot not responding (general)
 - Make sure the bot has proper permissions in your Discord server
 - Check that "Message Content Intent" is enabled in Discord Developer Portal
 - Verify the bot token is correct

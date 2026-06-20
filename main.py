@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import wavelink
 import os
 import asyncio
@@ -14,7 +15,7 @@ class MusicBot(commands.Bot):
         intents.voice_states = True
         
         super().__init__(
-            command_prefix='!',
+            command_prefix='/',  # Changed but slash commands don't use this
             intents=intents,
             help_command=None
         )
@@ -44,7 +45,7 @@ class MusicBot(commands.Bot):
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.listening,
-                name="!help | Music"
+                name="/help | Music"
             )
         )
     
@@ -57,6 +58,9 @@ if __name__ == '__main__':
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         print('ERROR: DISCORD_TOKEN not found in environment variables!')
+        exit(1)
+    
+    bot.run(token)     print('ERROR: DISCORD_TOKEN not found in environment variables!')
         exit(1)
     
     bot.run(token)
