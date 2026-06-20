@@ -18,22 +18,6 @@ class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    # ✅ FIX #5: NEW Voice state listener for disconnect handling
-    @commands.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):
-        """Handle voice state changes"""
-        if member == self.bot.user:
-            if before.channel and not after.channel:
-                # Bot was disconnected
-                print(f"⚠️  Bot disconnected from {before.channel.name}")
-                # Clean up resources
-                try:
-                    guild = before.channel.guild
-                    if guild.voice_client:
-                        await guild.voice_client.disconnect()
-                except Exception as e:
-                    print(f"Error cleaning up after disconnect: {e}")
-    
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
         """Handle track end and autoplay"""
@@ -70,7 +54,7 @@ class Music(commands.Cog):
     @app_commands.describe(query="Song name or URL (YouTube/Spotify)")
     async def play(self, interaction: discord.Interaction, query: str):
         """Play a song from YouTube or Spotify URL/search"""
-        # ✅ FIXED: First check if user is in voice channel
+        # Check if user is in voice channel
         if not interaction.user.voice or not interaction.user.voice.channel:
             await interaction.response.send_message(
                 "❌ You need to be in a voice channel!",
@@ -91,54 +75,41 @@ class Music(commands.Cog):
         await interaction.response.defer()
         
         try:
-            # ✅ CRITICAL FIX: Use direct Discord voice connection instead of Wavelink
+            # Use direct Discord voice connection
             print(f"🔗 Attempting to connect to {interaction.user.voice.channel.name}...")
             
             if not interaction.guild.voice_client:
-                # Connect using Discord's built-in method with longer timeout
+                # Connect using Discord's built-in method
                 try:
                     vc = await interaction.user.voice.channel.connect(
-                        timeout=10.0,  # Shorter timeout for Discord connection
+                        timeout=10.0,
                         reconnect=True,
-                        self_deaf=True  # Bot won't receive audio, only sends
+                        self_deaf=True
                     )
                     print(f"✅ Successfully connected to {interaction.user.voice.channel.name}")
-                    
-                    # Get the player (either existing or the one we just created)
                     player = cast(CustomPlayer, vc)
                 except asyncio.TimeoutError:
-                    print("❌ Connection timed out - Discord voice server not responding")
+                    print("❌ Connection timed out")
                     await interaction.followup.send(
-                        "❌ **Connection Timeout**: Discord voice servers are not responding.\n"
-                        "This is usually temporary. Try again in a few seconds."
+                        "❌ **Connection Timeout**: Discord voice servers not responding.\n"
+                        "Try again in a few seconds."
                     )
                     return
                 except discord.Forbidden:
-                    print("❌ Permission denied - bot doesn't have Connect permission")
+                    print("❌ Permission denied")
                     await interaction.followup.send(
-                        "❌ **Permission Denied**: I don't have permission to join this voice channel!\n"
-                        "Make sure I have:\n"
-                        "- ✅ **Connect** permission\n"
-                        "- ✅ **Speak** permission"
-                    )
-                    return
-                except discord.DiscordServerError as e:
-                    print(f"❌ Discord server error: {e}")
-                    await interaction.followup.send(
-                        f"❌ **Discord Server Error**: {str(e)[:100]}\n"
-                        "Please try again in a moment."
+                        "❌ **Permission Denied**: Missing **Connect** or **Speak** permission"
                     )
                     return
                 except Exception as e:
                     print(f"❌ Connection error: {type(e).__name__}: {e}")
                     await interaction.followup.send(
-                        f"❌ **Connection Failed**: {type(e).__name__}\n"
-                        f"Details: {str(e)[:100]}"
+                        f"❌ **Connection Failed**: {type(e).__name__}"
                     )
                     return
             else:
                 player = cast(CustomPlayer, interaction.guild.voice_client)
-                print(f"ℹ️ Already connected to voice")
+                print(f"ℹ️ Already connected")
             
             # Search for tracks
             print(f"🔍 Searching for: {query}")
@@ -148,7 +119,7 @@ class Music(commands.Cog):
                 return
             
             track = tracks[0]
-            print(f"📀 Found track: {track.title}")
+            print(f"📀 Found: {track.title}")
             
             if player.playing:
                 # Add to queue
@@ -175,13 +146,10 @@ class Music(commands.Cog):
         
         except wavelink.LavalinkException as e:
             print(f"❌ Lavalink error: {e}")
-            await interaction.followup.send(f"❌ **Lavalink Error**: {str(e)[:100]}")
-        except asyncio.TimeoutError:
-            print("❌ Search timed out")
-            await interaction.followup.send(f"❌ **Search Timeout**: Try again.")
+            await interaction.followup.send(f"❌ **Lavalink Error**: {str(e)[:80]}")
         except Exception as e:
             print(f"❌ Error: {type(e).__name__}: {e}")
-            await interaction.followup.send(f"❌ **Error**: {type(e).__name__}\nDetails: {str(e)[:100]}")
+            await interaction.followup.send(f"❌ **Error**: {type(e).__name__}")
     
     @app_commands.command(name="pause", description="Pause the current track")
     async def pause(self, interaction: discord.Interaction):
@@ -189,7 +157,7 @@ class Music(commands.Cog):
         player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
+            await interaction.response.send_message("❌ Not connected!", ephemeral=True)
             return
         
         if player.paused:
@@ -205,7 +173,7 @@ class Music(commands.Cog):
         player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
+            await interaction.response.send_message("❌ Not connected!", ephemeral=True)
             return
         
         if not player.paused:
@@ -221,28 +189,28 @@ class Music(commands.Cog):
         player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
+            await interaction.response.send_message("❌ Not connected!", ephemeral=True)
             return
         
         if not player.playing:
-            await interaction.response.send_message("❌ Nothing is playing!", ephemeral=True)
+            await interaction.response.send_message("❌ Nothing playing!", ephemeral=True)
             return
         
         await player.skip()
         await interaction.response.send_message("⏭️ Skipped!")
     
-    @app_commands.command(name="stop", description="Stop playback and clear the queue")
+    @app_commands.command(name="stop", description="Stop playback and clear queue")
     async def stop(self, interaction: discord.Interaction):
         """Stop playback and clear the queue"""
         player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
+            await interaction.response.send_message("❌ Not connected!", ephemeral=True)
             return
         
         player.queue.clear()
         await player.stop()
-        await interaction.response.send_message("⏹️ Stopped and cleared queue!")
+        await interaction.response.send_message("⏹️ Stopped!")
     
     @app_commands.command(name="queue", description="Show the current queue")
     async def queue(self, interaction: discord.Interaction):
@@ -250,7 +218,7 @@ class Music(commands.Cog):
         player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
+            await interaction.response.send_message("❌ Not connected!", ephemeral=True)
             return
         
         if not player.playing and not player.queue:
@@ -282,13 +250,13 @@ class Music(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="nowplaying", description="Show the currently playing track")
+    @app_commands.command(name="nowplaying", description="Show currently playing track")
     async def nowplaying(self, interaction: discord.Interaction):
         """Show the currently playing track"""
         player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player or not player.current:
-            await interaction.response.send_message("❌ Nothing is playing!", ephemeral=True)
+            await interaction.response.send_message("❌ Nothing playing!", ephemeral=True)
             return
         
         track = player.current
@@ -296,7 +264,7 @@ class Music(commands.Cog):
         duration = track.length
         
         # Create progress bar
-        progress = int((position / duration) * 20)
+        progress = int((position / duration) * 20) if duration > 0 else 0
         progress_bar = "▬" * progress + "🔘" + "▬" * (20 - progress)
         
         embed = discord.Embed(
@@ -321,7 +289,7 @@ class Music(commands.Cog):
         player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
+            await interaction.response.send_message("❌ Not connected!", ephemeral=True)
             return
         
         player.autoplay_enabled = not player.autoplay_enabled
@@ -336,7 +304,7 @@ class Music(commands.Cog):
         player: CustomPlayer = cast(CustomPlayer, interaction.guild.voice_client)
         
         if not player:
-            await interaction.response.send_message("❌ Not connected to a voice channel!", ephemeral=True)
+            await interaction.response.send_message("❌ Not connected!", ephemeral=True)
             return
         
         await player.disconnect()
@@ -347,32 +315,31 @@ class Music(commands.Cog):
         """Show bot commands"""
         embed = discord.Embed(
             title="🎵 Music Bot Commands",
-            description="A Discord music bot with Spotify and Lavalink support",
+            description="Discord music bot with Spotify & Lavalink",
             color=discord.Color.blue()
         )
         
         commands_list = [
-            ("</play:0>", "Play a song from YouTube or Spotify"),
-            ("</pause:0>", "Pause the current track"),
-            ("</resume:0>", "Resume the current track"),
-            ("</skip:0>", "Skip the current track"),
-            ("</stop:0>", "Stop playback and clear queue"),
-            ("</queue:0>", "Show the current queue"),
-            ("</nowplaying:0>", "Show currently playing track"),
-            ("</autoplay:0>", "Toggle autoplay on/off"),
-            ("</disconnect:0>", "Disconnect from voice channel"),
-            ("</status:0>", "Check bot and Lavalink status"),
+            ("</play:0>", "Play a song"),
+            ("</pause:0>", "Pause"),
+            ("</resume:0>", "Resume"),
+            ("</skip:0>", "Skip"),
+            ("</stop:0>", "Stop"),
+            ("</queue:0>", "Show queue"),
+            ("</nowplaying:0>", "Now playing"),
+            ("</autoplay:0>", "Toggle autoplay"),
+            ("</disconnect:0>", "Disconnect"),
+            ("</status:0>", "Bot status"),
         ]
         
         for cmd, desc in commands_list:
             embed.add_field(name=cmd, value=desc, inline=False)
         
-        embed.set_footer(text="💡 Use Discord's slash command menu for autocomplete!")
+        embed.set_footer(text="💡 Use /status to check permissions!")
         
         await interaction.response.send_message(embed=embed)
     
-    # ✅ FIX #6: ENHANCED Status command with permission checks
-    @app_commands.command(name="status", description="Check bot and Lavalink connection status")
+    @app_commands.command(name="status", description="Check bot and Lavalink status")
     async def status(self, interaction: discord.Interaction):
         """Check bot and Lavalink status"""
         embed = discord.Embed(
@@ -380,12 +347,12 @@ class Music(commands.Cog):
             color=discord.Color.blue()
         )
         
-        # Check Lavalink connection
+        # Lavalink status
         if wavelink.Pool.nodes:
             node = wavelink.Pool.nodes[0]
             embed.add_field(
                 name="🎵 Lavalink",
-                value=f"✅ Connected\nPlayers: {len(node.players)}\nLatency: {node.latency * 1000:.0f}ms",
+                value=f"✅ Connected\nPlayers: {len(node.players)}",
                 inline=True
             )
         else:
@@ -395,12 +362,12 @@ class Music(commands.Cog):
                 inline=True
             )
         
-        # Check voice connection
+        # Voice connection
         if interaction.guild.voice_client:
             player = cast(CustomPlayer, interaction.guild.voice_client)
             embed.add_field(
                 name="🔊 Voice",
-                value=f"✅ Connected to {player.channel.name}\nAutoplay: {'✅' if player.autoplay_enabled else '❌'}",
+                value=f"✅ Connected to {player.channel.name}",
                 inline=True
             )
         else:
@@ -417,18 +384,16 @@ class Music(commands.Cog):
             inline=True
         )
         
-        # Check permissions in current channel
+        # Permissions check
         if interaction.user.voice and interaction.user.voice.channel:
             voice_channel = interaction.user.voice.channel
             bot_member = interaction.guild.me
             permissions = voice_channel.permissions_for(bot_member)
             
-            perm_check = f"Connect: {'✅' if permissions.connect else '❌'}\n"
-            perm_check += f"Speak: {'✅' if permissions.speak else '❌'}\n"
-            perm_check += f"Channel Full: {'❌ YES' if voice_channel.user_limit > 0 and len(voice_channel.members) >= voice_channel.user_limit else '✅ NO'}"
+            perm_check = f"Connect: {'✅' if permissions.connect else '❌'}\nSpeak: {'✅' if permissions.speak else '❌'}"
             
             embed.add_field(
-                name="🔐 Voice Channel Permissions",
+                name="🔐 Permissions",
                 value=perm_check,
                 inline=False
             )
