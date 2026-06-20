@@ -18,6 +18,49 @@ class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
+    # ✅ FIX #2: NEW Helper function for permission checks
+    async def check_bot_permissions(self, interaction: discord.Interaction) -> bool:
+        """Check if bot has required voice permissions"""
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            await interaction.response.send_message(
+                "❌ You need to be in a voice channel!",
+                ephemeral=True
+            )
+            return False
+        
+        guild = interaction.guild
+        bot_member = guild.me
+        voice_channel = interaction.user.voice.channel
+        
+        permissions = voice_channel.permissions_for(bot_member)
+        
+        # Check required permissions
+        if not permissions.connect:
+            await interaction.response.send_message(
+                f"❌ I don't have **Connect** permission in {voice_channel.name}\n"
+                f"Please update my permissions!",
+                ephemeral=True
+            )
+            return False
+        
+        if not permissions.speak:
+            await interaction.response.send_message(
+                f"❌ I don't have **Speak** permission in {voice_channel.name}\n"
+                f"Please update my permissions!",
+                ephemeral=True
+            )
+            return False
+        
+        # Check if channel is full
+        if voice_channel.user_limit > 0 and len(voice_channel.members) >= voice_channel.user_limit:
+            await interaction.response.send_message(
+                f"❌ Voice channel {voice_channel.name} is full!",
+                ephemeral=True
+            )
+            return False
+        
+        return True
+    
     async def get_player(self, interaction: discord.Interaction) -> CustomPlayer:
         """Get or create a player for the guild"""
         if not interaction.guild.voice_client:
@@ -25,6 +68,22 @@ class Music(commands.Cog):
         else:
             player = cast(CustomPlayer, interaction.guild.voice_client)
         return player
+    
+    # ✅ FIX #5: NEW Voice state listener for disconnect handling
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        """Handle voice state changes"""
+        if member == self.bot.user:
+            if before.channel and not after.channel:
+                # Bot was disconnected
+                print(f"⚠️  Bot disconnected from {before.channel.name}")
+                # Clean up resources
+                try:
+                    guild = before.channel.guild
+                    if guild.voice_client:
+                        await guild.voice_client.disconnect()
+                except Exception as e:
+                    print(f"Error cleaning up after disconnect: {e}")
     
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
@@ -62,9 +121,8 @@ class Music(commands.Cog):
     @app_commands.describe(query="Song name or URL (YouTube/Spotify)")
     async def play(self, interaction: discord.Interaction, query: str):
         """Play a song from YouTube or Spotify URL/search"""
-        # Check if user is in voice channel
-        if not interaction.user.voice:
-            await interaction.response.send_message("❌ You need to be in a voice channel!", ephemeral=True)
+        # Check if user is in voice channel and bot has permissions
+        if not await self.check_bot_permissions(interaction):
             return
         
         # Check if Lavalink is connected
@@ -79,12 +137,22 @@ class Music(commands.Cog):
         # Defer response as search may take time
         await interaction.response.defer()
         
-        # Get or create player with better error handling
+        # ✅ FIX #3: NEW Timeout and retry logic for voice connection
         try:
             if not interaction.guild.voice_client:
-                # Connect to voice channel
-                player: CustomPlayer = await interaction.user.voice.channel.connect(cls=CustomPlayer)
-                await interaction.followup.send(f"✅ Connected to **{interaction.user.voice.channel.name}**")
+                # Connect to voice channel with timeout
+                timeout = 30  # seconds
+                try:
+                    player: CustomPlayer = await asyncio.wait_for(
+                        interaction.user.voice.channel.connect(cls=CustomPlayer),
+                        timeout=timeout
+                    )
+                    await interaction.followup.send(f"✅ Connected to **{interaction.user.voice.channel.name}**")
+                except asyncio.TimeoutError:
+                    await interaction.followup.send(
+                        "❌ Connection timed out! Try again or check your voice channel."
+                    )
+                    return
             else:
                 player = cast(CustomPlayer, interaction.guild.voice_client)
         except discord.Forbidden:
@@ -92,6 +160,17 @@ class Music(commands.Cog):
             return
         except discord.ClientException as e:
             await interaction.followup.send(f"❌ Failed to connect to voice: {str(e)}")
+            return
+        except discord.DiscordServerError as e:
+            # ✅ FIX #4: NEW Comprehensive error handling
+            await interaction.followup.send(
+                f"❌ Discord server error: {str(e)}\nPlease try again in a moment."
+            )
+            return
+        except discord.HTTPException as e:
+            await interaction.followup.send(
+                f"❌ Network error: {str(e)}\nPlease check your connection."
+            )
             return
         except Exception as e:
             await interaction.followup.send(f"❌ Unexpected error connecting to voice: {str(e)}")
@@ -130,6 +209,8 @@ class Music(commands.Cog):
         
         except wavelink.LavalinkException as e:
             await interaction.followup.send(f"❌ Lavalink error: {str(e)}")
+        except asyncio.TimeoutError:
+            await interaction.followup.send(f"❌ Search timed out! Try again.")
         except Exception as e:
             await interaction.followup.send(f"❌ Error playing track: {str(e)}")
     
@@ -321,6 +402,7 @@ class Music(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
     
+    # ✅ FIX #6: ENHANCED Status command with permission checks
     @app_commands.command(name="status", description="Check bot and Lavalink connection status")
     async def status(self, interaction: discord.Interaction):
         """Check bot and Lavalink status"""
@@ -334,7 +416,7 @@ class Music(commands.Cog):
             node = wavelink.Pool.nodes[0]
             embed.add_field(
                 name="🎵 Lavalink",
-                value=f"✅ Connected\nPlayers: {len(node.players)}",
+                value=f"✅ Connected\nPlayers: {len(node.players)}\nLatency: {node.latency * 1000:.0f}ms",
                 inline=True
             )
         else:
@@ -349,7 +431,7 @@ class Music(commands.Cog):
             player = cast(CustomPlayer, interaction.guild.voice_client)
             embed.add_field(
                 name="🔊 Voice",
-                value=f"✅ Connected to {player.channel.name}",
+                value=f"✅ Connected to {player.channel.name}\nAutoplay: {'✅' if player.autoplay_enabled else '❌'}",
                 inline=True
             )
         else:
@@ -365,6 +447,22 @@ class Music(commands.Cog):
             value=f"Servers: {len(self.bot.guilds)}\nPing: {round(self.bot.latency * 1000)}ms",
             inline=True
         )
+        
+        # Check permissions in current channel
+        if interaction.user.voice and interaction.user.voice.channel:
+            voice_channel = interaction.user.voice.channel
+            bot_member = interaction.guild.me
+            permissions = voice_channel.permissions_for(bot_member)
+            
+            perm_check = f"Connect: {'✅' if permissions.connect else '❌'}\n"
+            perm_check += f"Speak: {'✅' if permissions.speak else '❌'}\n"
+            perm_check += f"Channel Full: {'❌ YES' if voice_channel.user_limit > 0 and len(voice_channel.members) >= voice_channel.user_limit else '✅ NO'}"
+            
+            embed.add_field(
+                name="🔐 Voice Channel Permissions",
+                value=perm_check,
+                inline=False
+            )
         
         await interaction.response.send_message(embed=embed)
 
