@@ -81,13 +81,10 @@ class Music(commands.Cog):
             if not interaction.guild.voice_client:
                 # Connect using Discord's built-in method
                 try:
-                    vc = await interaction.user.voice.channel.connect(
-                        timeout=10.0,
-                        reconnect=True,
-                        self_deaf=True
-                    )
-                    print(f"✅ Successfully connected to {interaction.user.voice.channel.name}")
-                    player = cast(CustomPlayer, vc)
+                    player = await interaction.user.voice.channel.connect(
+    cls=CustomPlayer,
+    self_deaf=True
+)
                 except asyncio.TimeoutError:
                     print("❌ Connection timed out")
                     await interaction.followup.send(
