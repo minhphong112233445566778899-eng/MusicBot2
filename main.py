@@ -1,9 +1,6 @@
+import os
 import discord
 from discord.ext import commands
-from discord import app_commands
-import wavelink
-import os
-import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,73 +8,77 @@ load_dotenv()
 class MusicBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True
+        intents.guilds = True
         intents.voice_states = True
-        intents.guilds = True  # ✅ ADDED - needed for guild info
-        intents.members = True  # ✅ ADDED - needed for member voice states
-        
+        intents.message_content = True
+
         super().__init__(
-            command_prefix='/',  # Changed but slash commands don't use this
+            command_prefix="/",
             intents=intents,
             help_command=None
         )
-    
+
     async def setup_hook(self):
-        # Load music cog
-        await self.load_extension('bot.cogs.music')
-        
-        # Sync slash commands FIRST (before Lavalink connection)
         try:
             await self.tree.sync()
-            print('✅ Slash commands synced!')
+            print("✅ Slash commands synced!")
         except Exception as e:
-            print(f'❌ Failed to sync slash commands: {e}')
-        
-        # Connect to Lavalink (don't block bot if it fails)
-        try:
-            lavalink_uri = os.getenv('LAVALINK_URI', 'http://127.0.0.1:2333')
-            
-            # Ensure URI has http:// or https://
-            if not lavalink_uri.startswith(('http://', 'https://')):
-                lavalink_uri = f'http://{lavalink_uri}'
-                print(f'⚠️  Added http:// to Lavalink URI: {lavalink_uri}')
-            
-            nodes = [
-                wavelink.Node(
-                    uri=lavalink_uri,
-                    password=os.getenv('LAVALINK_PASSWORD', 'youshallnotpass'),
-                    identifier='main'
-                )
-            ]
-            
-            await wavelink.Pool.connect(nodes=nodes, client=self)
-            print(f'✅ Connected to Lavalink!')
-        except Exception as e:
-            print(f'⚠️  Failed to connect to Lavalink: {e}')
-            print(f'⚠️  Bot will start but music commands won\'t work until Lavalink is configured')
-    
+            print(f"❌ Sync failed: {e}")
+
     async def on_ready(self):
-        print(f'Logged in as {self.bot.user} (ID: {self.bot.user.id})')
-        print(f'Connected to {len(self.guilds)} guild(s)')
-        print('------')
-        
-        # Set bot status
-        await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.listening,
-                name="/help | Music"
-            )
-        )
-    
-    async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
-        print(f'✅ Lavalink node {payload.node.identifier} is ready!')
+        print(f"Logged in as {self.user}")
+        print(f"Connected to {len(self.guilds)} guild(s)")
+
 
 bot = MusicBot()
 
-if __name__ == '__main__':
-    token = os.getenv('DISCORD_TOKEN')
-    if not token:
-        print('ERROR: DISCORD_TOKEN not found in environment variables!')
-        exit(1)
-    
+
+@bot.tree.command(name="join", description="Join your voice channel")
+async def join(interaction: discord.Interaction):
+    if not interaction.user.voice:
+        await interaction.response.send_message(
+            "You must join a voice channel first.",
+            ephemeral=True
+        )
+        return
+
+    channel = interaction.user.voice.channel
+
+    try:
+        if interaction.guild.voice_client:
+            await interaction.guild.voice_client.move_to(channel)
+        else:
+            await channel.connect()
+
+        await interaction.response.send_message(
+            f"Joined **{channel.name}**"
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"Voice connection failed: {e}",
+            ephemeral=True
+        )
+
+
+@bot.tree.command(name="leave", description="Leave the voice channel")
+async def leave(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+
+    if not vc:
+        await interaction.response.send_message(
+            "I'm not in a voice channel.",
+            ephemeral=True
+        )
+        return
+
+    await vc.disconnect()
+    await interaction.response.send_message("Disconnected.")
+
+
+token = os.getenv("DISCORD_TOKEN")
+
+if not token:
+    print("❌ DISCORD_TOKEN missing")
+else:
     bot.run(token)
