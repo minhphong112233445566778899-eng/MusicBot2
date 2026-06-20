@@ -18,14 +18,6 @@ class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def get_player(self, interaction: discord.Interaction) -> CustomPlayer:
-        """Get or create a player for the guild"""
-        if not interaction.guild.voice_client:
-            player = await interaction.user.voice.channel.connect(cls=CustomPlayer)
-        else:
-            player = cast(CustomPlayer, interaction.guild.voice_client)
-        return player
-    
     # ✅ FIX #5: NEW Voice state listener for disconnect handling
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
@@ -98,58 +90,57 @@ class Music(commands.Cog):
         # Defer response as search may take time
         await interaction.response.defer()
         
-        # ✅ FIX #3: NEW Timeout and retry logic for voice connection
         try:
+            # ✅ CRITICAL FIX: Use direct Discord voice connection instead of Wavelink
+            print(f"🔗 Attempting to connect to {interaction.user.voice.channel.name}...")
+            
             if not interaction.guild.voice_client:
-                # Connect to voice channel with timeout
-                timeout = 30  # seconds
+                # Connect using Discord's built-in method with longer timeout
                 try:
-                    print(f"🔗 Attempting to connect to {interaction.user.voice.channel.name}...")
-                    player: CustomPlayer = await asyncio.wait_for(
-                        interaction.user.voice.channel.connect(cls=CustomPlayer),
-                        timeout=timeout
+                    vc = await interaction.user.voice.channel.connect(
+                        timeout=10.0,  # Shorter timeout for Discord connection
+                        reconnect=True,
+                        self_deaf=True  # Bot won't receive audio, only sends
                     )
                     print(f"✅ Successfully connected to {interaction.user.voice.channel.name}")
-                    await interaction.followup.send(f"✅ Connected to **{interaction.user.voice.channel.name}**")
+                    
+                    # Get the player (either existing or the one we just created)
+                    player = cast(CustomPlayer, vc)
                 except asyncio.TimeoutError:
-                    print("❌ Connection timed out")
+                    print("❌ Connection timed out - Discord voice server not responding")
                     await interaction.followup.send(
-                        "❌ Connection timed out! Try again or check your voice channel."
+                        "❌ **Connection Timeout**: Discord voice servers are not responding.\n"
+                        "This is usually temporary. Try again in a few seconds."
+                    )
+                    return
+                except discord.Forbidden:
+                    print("❌ Permission denied - bot doesn't have Connect permission")
+                    await interaction.followup.send(
+                        "❌ **Permission Denied**: I don't have permission to join this voice channel!\n"
+                        "Make sure I have:\n"
+                        "- ✅ **Connect** permission\n"
+                        "- ✅ **Speak** permission"
+                    )
+                    return
+                except discord.DiscordServerError as e:
+                    print(f"❌ Discord server error: {e}")
+                    await interaction.followup.send(
+                        f"❌ **Discord Server Error**: {str(e)[:100]}\n"
+                        "Please try again in a moment."
+                    )
+                    return
+                except Exception as e:
+                    print(f"❌ Connection error: {type(e).__name__}: {e}")
+                    await interaction.followup.send(
+                        f"❌ **Connection Failed**: {type(e).__name__}\n"
+                        f"Details: {str(e)[:100]}"
                     )
                     return
             else:
                 player = cast(CustomPlayer, interaction.guild.voice_client)
                 print(f"ℹ️ Already connected to voice")
-        except discord.Forbidden as e:
-            print(f"❌ Permission denied: {e}")
-            await interaction.followup.send(
-                "❌ I don't have permission to join your voice channel!\n"
-                "Make sure I have **Connect** and **Speak** permissions."
-            )
-            return
-        except discord.ClientException as e:
-            print(f"❌ Client error: {e}")
-            await interaction.followup.send(f"❌ Failed to connect to voice: {str(e)}")
-            return
-        except discord.DiscordServerError as e:
-            print(f"❌ Server error: {e}")
-            await interaction.followup.send(
-                f"❌ Discord server error: {str(e)}\nPlease try again in a moment."
-            )
-            return
-        except discord.HTTPException as e:
-            print(f"❌ Network error: {e}")
-            await interaction.followup.send(
-                f"❌ Network error: {str(e)}\nPlease check your connection."
-            )
-            return
-        except Exception as e:
-            print(f"❌ Unexpected error: {e}")
-            await interaction.followup.send(f"❌ Unexpected error connecting to voice: {str(e)}")
-            return
-        
-        # Search for tracks
-        try:
+            
+            # Search for tracks
             print(f"🔍 Searching for: {query}")
             tracks = await wavelink.Playable.search(query)
             if not tracks:
@@ -184,13 +175,13 @@ class Music(commands.Cog):
         
         except wavelink.LavalinkException as e:
             print(f"❌ Lavalink error: {e}")
-            await interaction.followup.send(f"❌ Lavalink error: {str(e)}")
+            await interaction.followup.send(f"❌ **Lavalink Error**: {str(e)[:100]}")
         except asyncio.TimeoutError:
             print("❌ Search timed out")
-            await interaction.followup.send(f"❌ Search timed out! Try again.")
+            await interaction.followup.send(f"❌ **Search Timeout**: Try again.")
         except Exception as e:
-            print(f"❌ Error playing track: {e}")
-            await interaction.followup.send(f"❌ Error playing track: {str(e)}")
+            print(f"❌ Error: {type(e).__name__}: {e}")
+            await interaction.followup.send(f"❌ **Error**: {type(e).__name__}\nDetails: {str(e)[:100]}")
     
     @app_commands.command(name="pause", description="Pause the current track")
     async def pause(self, interaction: discord.Interaction):
