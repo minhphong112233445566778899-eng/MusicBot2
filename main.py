@@ -24,17 +24,35 @@ class MusicBot(commands.Bot):
         # Load music cog
         await self.load_extension('bot.cogs.music')
         
-        # Connect to Lavalink
-        nodes = [
-            wavelink.Node(
-                uri=os.getenv('LAVALINK_URI', 'http://127.0.0.1:2333'),
-                password=os.getenv('LAVALINK_PASSWORD', 'youshallnotpass'),
-                identifier='main'
-            )
-        ]
+        # Sync slash commands FIRST (before Lavalink connection)
+        try:
+            await self.tree.sync()
+            print('✅ Slash commands synced!')
+        except Exception as e:
+            print(f'❌ Failed to sync slash commands: {e}')
         
-        await wavelink.Pool.connect(nodes=nodes, client=self)
-        print(f'Connected to Lavalink node(s)')
+        # Connect to Lavalink (don't block bot if it fails)
+        try:
+            lavalink_uri = os.getenv('LAVALINK_URI', 'http://127.0.0.1:2333')
+            
+            # Ensure URI has http:// or https://
+            if not lavalink_uri.startswith(('http://', 'https://')):
+                lavalink_uri = f'http://{lavalink_uri}'
+                print(f'⚠️  Added http:// to Lavalink URI: {lavalink_uri}')
+            
+            nodes = [
+                wavelink.Node(
+                    uri=lavalink_uri,
+                    password=os.getenv('LAVALINK_PASSWORD', 'youshallnotpass'),
+                    identifier='main'
+                )
+            ]
+            
+            await wavelink.Pool.connect(nodes=nodes, client=self)
+            print(f'✅ Connected to Lavalink!')
+        except Exception as e:
+            print(f'⚠️  Failed to connect to Lavalink: {e}')
+            print(f'⚠️  Bot will start but music commands won\'t work until Lavalink is configured')
     
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
@@ -50,7 +68,7 @@ class MusicBot(commands.Bot):
         )
     
     async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
-        print(f'Lavalink node {payload.node.identifier} is ready!')
+        print(f'✅ Lavalink node {payload.node.identifier} is ready!')
 
 bot = MusicBot()
 
@@ -58,9 +76,6 @@ if __name__ == '__main__':
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         print('ERROR: DISCORD_TOKEN not found in environment variables!')
-        exit(1)
-    
-    bot.run(token)     print('ERROR: DISCORD_TOKEN not found in environment variables!')
         exit(1)
     
     bot.run(token)
