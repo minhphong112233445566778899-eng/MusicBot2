@@ -13,6 +13,8 @@ class MusicBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.voice_states = True
+        intents.guilds = True  # ✅ ADDED - needed for guild info
+        intents.members = True  # ✅ ADDED - needed for member voice states
         
         super().__init__(
             command_prefix='/',  # Changed but slash commands don't use this
@@ -55,7 +57,7 @@ class MusicBot(commands.Bot):
             print(f'⚠️  Bot will start but music commands won\'t work until Lavalink is configured')
     
     async def on_ready(self):
-        print(f'Logged in as {self.user} (ID: {self.user.id})')
+        print(f'Logged in as {self.bot.user} (ID: {self.bot.user.id})')
         print(f'Connected to {len(self.guilds)} guild(s)')
         print('------')
         
