@@ -62,18 +62,40 @@ class Music(commands.Cog):
     @app_commands.describe(query="Song name or URL (YouTube/Spotify)")
     async def play(self, interaction: discord.Interaction, query: str):
         """Play a song from YouTube or Spotify URL/search"""
+        # Check if user is in voice channel
         if not interaction.user.voice:
             await interaction.response.send_message("❌ You need to be in a voice channel!", ephemeral=True)
+            return
+        
+        # Check if Lavalink is connected
+        if not wavelink.Pool.nodes:
+            await interaction.response.send_message(
+                "❌ Music system is not ready! Lavalink is not connected.\n"
+                "Please contact the bot owner to configure Lavalink.",
+                ephemeral=True
+            )
             return
         
         # Defer response as search may take time
         await interaction.response.defer()
         
-        # Get or create player
-        if not interaction.guild.voice_client:
-            player: CustomPlayer = await interaction.user.voice.channel.connect(cls=CustomPlayer)
-        else:
-            player = cast(CustomPlayer, interaction.guild.voice_client)
+        # Get or create player with better error handling
+        try:
+            if not interaction.guild.voice_client:
+                # Connect to voice channel
+                player: CustomPlayer = await interaction.user.voice.channel.connect(cls=CustomPlayer)
+                await interaction.followup.send(f"✅ Connected to **{interaction.user.voice.channel.name}**")
+            else:
+                player = cast(CustomPlayer, interaction.guild.voice_client)
+        except discord.Forbidden:
+            await interaction.followup.send("❌ I don't have permission to join your voice channel!")
+            return
+        except discord.ClientException as e:
+            await interaction.followup.send(f"❌ Failed to connect to voice: {str(e)}")
+            return
+        except Exception as e:
+            await interaction.followup.send(f"❌ Unexpected error connecting to voice: {str(e)}")
+            return
         
         # Search for tracks
         try:
@@ -106,6 +128,8 @@ class Music(commands.Cog):
                 embed.add_field(name="Duration", value=f"{track.length // 60000}:{(track.length // 1000) % 60:02d}")
                 await interaction.followup.send(embed=embed)
         
+        except wavelink.LavalinkException as e:
+            await interaction.followup.send(f"❌ Lavalink error: {str(e)}")
         except Exception as e:
             await interaction.followup.send(f"❌ Error playing track: {str(e)}")
     
@@ -287,12 +311,60 @@ class Music(commands.Cog):
             ("</nowplaying:0>", "Show currently playing track"),
             ("</autoplay:0>", "Toggle autoplay on/off"),
             ("</disconnect:0>", "Disconnect from voice channel"),
+            ("</status:0>", "Check bot and Lavalink status"),
         ]
         
         for cmd, desc in commands_list:
             embed.add_field(name=cmd, value=desc, inline=False)
         
         embed.set_footer(text="💡 Use Discord's slash command menu for autocomplete!")
+        
+        await interaction.response.send_message(embed=embed)
+    
+    @app_commands.command(name="status", description="Check bot and Lavalink connection status")
+    async def status(self, interaction: discord.Interaction):
+        """Check bot and Lavalink status"""
+        embed = discord.Embed(
+            title="🤖 Bot Status",
+            color=discord.Color.blue()
+        )
+        
+        # Check Lavalink connection
+        if wavelink.Pool.nodes:
+            node = wavelink.Pool.nodes[0]
+            embed.add_field(
+                name="🎵 Lavalink",
+                value=f"✅ Connected\nPlayers: {len(node.players)}",
+                inline=True
+            )
+        else:
+            embed.add_field(
+                name="🎵 Lavalink",
+                value="❌ Not connected",
+                inline=True
+            )
+        
+        # Check voice connection
+        if interaction.guild.voice_client:
+            player = cast(CustomPlayer, interaction.guild.voice_client)
+            embed.add_field(
+                name="🔊 Voice",
+                value=f"✅ Connected to {player.channel.name}",
+                inline=True
+            )
+        else:
+            embed.add_field(
+                name="🔊 Voice",
+                value="❌ Not connected",
+                inline=True
+            )
+        
+        # Bot info
+        embed.add_field(
+            name="📊 Bot Info",
+            value=f"Servers: {len(self.bot.guilds)}\nPing: {round(self.bot.latency * 1000)}ms",
+            inline=True
+        )
         
         await interaction.response.send_message(embed=embed)
 
